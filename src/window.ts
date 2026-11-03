@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { delimiter, join, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import type { Host } from "./host.ts";
 
 /** A program and its arguments. */
@@ -36,7 +36,9 @@ export function windowCommands(url: string, host: Host): Command[] {
   const commands: Command[] = chosen ? [{ command: chosen, args: [app] }] : [];
   if (host.platform === "darwin") {
     const installed = MAC.filter((name) =>
-      [join("/Applications", `${name}.app`), join(host.home, "Applications", `${name}.app`)].some(host.exists)
+      [posix.join("/Applications", `${name}.app`), posix.join(host.home, "Applications", `${name}.app`)].some(
+        host.exists
+      )
     );
     commands.push(...installed.map((name) => ({ command: "open", args: ["-na", name, "--args", app] })));
     commands.push({ command: "open", args: [url] });
@@ -61,7 +63,7 @@ export function windowCommands(url: string, host: Host): Command[] {
     const roots = ["/mnt/c/Program Files", "/mnt/c/Program Files (x86)", ...users];
     const found = WINDOWS.flatMap((parts) =>
       roots
-        .map((root) => join(root, ...parts))
+        .map((root) => posix.join(root, ...parts))
         .filter(host.exists)
         .slice(0, 1)
     );
@@ -69,10 +71,10 @@ export function windowCommands(url: string, host: Host): Command[] {
     // By its full path: a menu entry starts with a PATH that has no Windows folders.
     commands.push({ command: "/mnt/c/Windows/explorer.exe", args: [url] });
   } else {
-    const path = (host.env.PATH ?? "").split(delimiter).filter(Boolean);
+    const path = (host.env.PATH ?? "").split(":").filter(Boolean);
     const found = LINUX.flatMap((name) =>
       path
-        .map((dir) => join(dir, name))
+        .map((dir) => posix.join(dir, name))
         .filter(host.exists)
         .slice(0, 1)
     );

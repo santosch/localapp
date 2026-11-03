@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { posix, win32 } from "node:path";
 
 /**
  * What localapp needs to know about the machine it runs on. Passed around instead of read from
@@ -45,10 +45,12 @@ export function thisHost(): Host {
  * on macOS, `%LOCALAPPDATA%\<name>` on Windows.
  */
 export function stateDir(name: string, host: Host): string {
-  if (host.platform === "darwin") return join(host.home, "Library", "Application Support", name);
-  if (host.platform === "win32") return join(host.env.LOCALAPPDATA ?? join(host.home, "AppData", "Local"), name);
-  return join(xdg(host.env.XDG_STATE_HOME) ?? join(host.home, ".local", "state"), name);
+  // Paths as the host writes them (not as the machine running this does — tests play every host).
+  if (host.platform === "win32")
+    return win32.join(host.env.LOCALAPPDATA ?? win32.join(host.home, "AppData", "Local"), name);
+  if (host.platform === "darwin") return posix.join(host.home, "Library", "Application Support", name);
+  return posix.join(xdg(host.env.XDG_STATE_HOME) ?? posix.join(host.home, ".local", "state"), name);
 }
 
 /** An XDG base directory variable, if it's set to an absolute path (the spec: else it's ignored). */
-export const xdg = (value: string | undefined) => (value && isAbsolute(value) ? value : undefined);
+export const xdg = (value: string | undefined) => (value && posix.isAbsolute(value) ? value : undefined);

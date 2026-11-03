@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, extname, join, win32 } from "node:path";
+import { extname, posix, win32 } from "node:path";
 import { promisify } from "node:util";
 import { xdg, type Host } from "./host.ts";
 import { pngSize, pngToIcns, pngToIco } from "./icons.ts";
@@ -79,24 +79,24 @@ export function desktopEntry(o: {
 }
 
 async function linux(o: InstallOptions): Promise<Installed> {
-  const data = xdg(o.host.env.XDG_DATA_HOME) ?? join(o.host.home, ".local", "share");
-  const entry = join(data, "applications", `${o.name}.desktop`);
-  const icons = join(data, "icons", "hicolor");
+  const data = xdg(o.host.env.XDG_DATA_HOME) ?? posix.join(o.host.home, ".local", "share");
+  const entry = posix.join(data, "applications", `${o.name}.desktop`);
+  const icons = posix.join(data, "icons", "hicolor");
   let icon: string | undefined;
-  if (o.icon?.svg) icon = join(icons, "scalable", "apps", `${o.name}.svg`);
+  if (o.icon?.svg) icon = posix.join(icons, "scalable", "apps", `${o.name}.svg`);
   else if (o.icon?.png) {
     const { width, height } = pngSize(await readFile(o.icon.png));
-    icon = join(icons, `${width}x${height}`, "apps", `${o.name}.png`);
+    icon = posix.join(icons, `${width}x${height}`, "apps", `${o.name}.png`);
   }
   if (o.remove) {
     await Promise.all([entry, icon].filter((p): p is string => Boolean(p)).map((p) => rm(p, { force: true })));
     return { paths: [entry, ...(icon ? [icon] : [])] };
   }
   if (icon) {
-    await mkdir(dirname(icon), { recursive: true });
+    await mkdir(posix.dirname(icon), { recursive: true });
     await writeFile(icon, await readFile((o.icon?.svg ?? o.icon?.png)!));
   }
-  await mkdir(dirname(entry), { recursive: true });
+  await mkdir(posix.dirname(entry), { recursive: true });
   const exec = withPath([...o.command, "open"], o.host);
   await writeFile(
     entry,
@@ -123,20 +123,20 @@ ${o.icon ? `  <key>CFBundleIconFile</key><string>${xml(o.name)}.icns</string>\n`
 
 /** macOS: `~/Applications/<title>.app`, which runs the app's CLI (no Dock icon of its own). */
 async function mac(o: InstallOptions): Promise<Installed> {
-  const app = join(o.host.home, "Applications", `${o.title}.app`);
+  const app = posix.join(o.host.home, "Applications", `${o.title}.app`);
   if (o.remove) {
     await rm(app, { recursive: true, force: true });
     return { paths: [app] };
   }
-  const contents = join(app, "Contents");
-  await mkdir(join(contents, "MacOS"), { recursive: true });
+  const contents = posix.join(app, "Contents");
+  await mkdir(posix.join(contents, "MacOS"), { recursive: true });
   const png = o.icon?.png;
   if (png) {
-    await mkdir(join(contents, "Resources"), { recursive: true });
-    await writeFile(join(contents, "Resources", `${o.name}.icns`), pngToIcns(await readFile(png)));
+    await mkdir(posix.join(contents, "Resources"), { recursive: true });
+    await writeFile(posix.join(contents, "Resources", `${o.name}.icns`), pngToIcns(await readFile(png)));
   }
-  await writeFile(join(contents, "Info.plist"), infoPlist({ name: o.name, title: o.title, icon: Boolean(png) }));
-  const script = join(contents, "MacOS", o.name);
+  await writeFile(posix.join(contents, "Info.plist"), infoPlist({ name: o.name, title: o.title, icon: Boolean(png) }));
+  const script = posix.join(contents, "MacOS", o.name);
   await writeFile(
     script,
     `#!/bin/sh\nexec ${withPath([...o.command, "open"], o.host)

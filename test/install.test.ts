@@ -22,42 +22,46 @@ describe("a Linux menu entry", () => {
     expect(desktopExec(['/a "b"/$c'])).toBe('"/a \\\\"b\\\\"/\\\\$c"');
   });
 
-  it("is a desktop entry and its icon, with this shell's PATH — gone again with remove", async () => {
-    const data = join(dir, "data");
-    const options = {
-      ...app,
-      host: host({ env: { XDG_DATA_HOME: data, PATH: "/usr/bin:/bin" } }),
-      icon: { png: icon },
-    };
-    const { paths } = await install(options);
-    expect(paths).toEqual([
-      join(data, "applications", "hello.desktop"),
-      join(data, "icons", "hicolor", "256x256", "apps", "hello.png"),
-    ]);
-    const entry = readFileSync(paths[0]!, "utf8");
-    expect(entry).toBe(
-      desktopEntry({
-        title: "Hello",
-        description: "Says hello",
-        exec: withPath([...app.command, "open"], options.host),
-        icon: paths[1]!,
-      })
-    );
-    expect(entry).toContain("Exec=/usr/bin/env PATH=/usr/bin:/bin /usr/bin/node /x/hello.js open\n");
-    expect(readFileSync(paths[1]!)).toEqual(readFileSync(icon));
-    await install({ ...options, remove: true });
-    expect(() => statSync(paths[0]!)).toThrow();
-    expect(() => statSync(paths[1]!)).toThrow();
-  });
+  // Writes real files under POSIX paths: on Linux and macOS (CI plays both), not on Windows.
+  it.skipIf(process.platform === "win32")(
+    "is a desktop entry and its icon, with this shell's PATH — gone again with remove",
+    async () => {
+      const data = join(dir, "data");
+      const options = {
+        ...app,
+        host: host({ env: { XDG_DATA_HOME: data, PATH: "/usr/bin:/bin" } }),
+        icon: { png: icon },
+      };
+      const { paths } = await install(options);
+      expect(paths).toEqual([
+        join(data, "applications", "hello.desktop"),
+        join(data, "icons", "hicolor", "256x256", "apps", "hello.png"),
+      ]);
+      const entry = readFileSync(paths[0]!, "utf8");
+      expect(entry).toBe(
+        desktopEntry({
+          title: "Hello",
+          description: "Says hello",
+          exec: withPath([...app.command, "open"], options.host),
+          icon: paths[1]!,
+        })
+      );
+      expect(entry).toContain("Exec=/usr/bin/env PATH=/usr/bin:/bin /usr/bin/node /x/hello.js open\n");
+      expect(readFileSync(paths[1]!)).toEqual(readFileSync(icon));
+      await install({ ...options, remove: true });
+      expect(() => statSync(paths[0]!)).toThrow();
+      expect(() => statSync(paths[1]!)).toThrow();
+    }
+  );
 
-  it("prefers an SVG icon (scalable)", async () => {
+  it.skipIf(process.platform === "win32")("prefers an SVG icon (scalable)", async () => {
     const data = join(dir, "data-svg");
     const { paths } = await install({ ...app, host: host({ env: { XDG_DATA_HOME: data } }), icon: { png: icon, svg } });
     expect(paths[1]).toBe(join(data, "icons", "hicolor", "scalable", "apps", "hello.svg"));
   });
 });
 
-describe("a macOS app", () => {
+describe.skipIf(process.platform === "win32")("a macOS app", () => {
   it("is an .app in ~/Applications that runs the CLI, with the icon as .icns", async () => {
     const home = join(dir, "mac");
     const { paths } = await install({ ...app, host: host({ platform: "darwin", home }), icon: { png: icon } });
