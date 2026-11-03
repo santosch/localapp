@@ -15,4 +15,6 @@ First release.
 - Stops when idle (`idle`, open WebSockets and `busy()` count as use) or keeps running.
 - App menu entries: Linux `.desktop` (with its icon), macOS `.app` (`.icns`), Windows Start menu
   shortcuts from WSL or Windows that start hidden (no console window) with the app's own icon.
+- `stop` asks the server to stop, so `close` runs on every platform; what a background server
+  started stops with it (process group, or process tree on Windows).
 - No runtime dependencies.

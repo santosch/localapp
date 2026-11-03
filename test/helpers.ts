@@ -19,6 +19,7 @@ export const host = (patch: Partial<Host> = {}, files: string[] = []): Host => (
   wsl: false,
   home: "/home/me",
   exists: (path) => files.includes(path),
+  list: () => [],
   ...patch,
 });
 

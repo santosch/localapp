@@ -53,7 +53,12 @@ export function windowCommands(url: string, host: Host): Command[] {
     commands.push(...found.map((command) => ({ command, args: [app] })));
     commands.push({ command: win32.join(host.env.WINDIR ?? "C:\\Windows", "explorer.exe"), args: [url] });
   } else if (host.wsl) {
-    const roots = ["/mnt/c/Program Files", "/mnt/c/Program Files (x86)"];
+    // Installed for everyone, or for one user (Chrome and Brave can be, in their AppData\Local).
+    const users = host
+      .list("/mnt/c/Users")
+      .filter((user) => !["All Users", "Default", "Default User", "Public"].includes(user))
+      .map((user) => `/mnt/c/Users/${user}/AppData/Local`);
+    const roots = ["/mnt/c/Program Files", "/mnt/c/Program Files (x86)", ...users];
     const found = WINDOWS.flatMap((parts) =>
       roots
         .map((root) => join(root, ...parts))

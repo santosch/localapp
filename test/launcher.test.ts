@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { readRecord } from "../src/record.ts";
-import { isAlive } from "../src/server.ts";
+import { readRecord, writeRecord } from "../src/record.ts";
+import { isAlive } from "../src/client.ts";
 import { tempDir } from "./helpers.ts";
 
 const run = promisify(execFile);
@@ -52,6 +53,23 @@ describe.skipIf(process.platform === "win32")("the launcher", () => {
     const after = await cli(dir, ["status"]);
     expect(after.code).toBe(1);
     expect(after.stderr).toContain("isn't running");
+  });
+
+  it("runs the app's close when asked to stop", async () => {
+    const dir = freshDir();
+    const closed = join(dir, "closed.txt");
+    await cli(dir, ["open"], { TEST_CLOSED_FILE: closed });
+    await cli(dir, ["stop"]);
+    expect(readFileSync(closed, "utf8")).toBe("closed");
+  });
+
+  it("starts anyway when a server crashed and its process id is someone else's now", async () => {
+    const dir = freshDir();
+    // This test's own process: alive, but not the app.
+    await writeRecord(dir, { pid: process.pid, port: 1, key: "stale" });
+    const opened = await cli(dir, ["open"]);
+    expect(opened.stderr).toContain("localapp-test is open");
+    expect((await readRecord(dir))?.pid).not.toBe(process.pid);
   });
 
   it("lets a printed one-time link in once, with the key as a cookie", async () => {

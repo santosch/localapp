@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { stateDir, thisHost, type Host } from "./host.ts";
 import { install, type Installed } from "./install.ts";
+import { ask } from "./client.ts";
 import {
-  ask,
   ensureRunning,
   launchLink,
   openApp,
@@ -163,7 +163,7 @@ export function defineApp(config: AppConfig): LocalApp {
         remove: options.remove,
       }),
     async fetch(path, init) {
-      return ask(launcher, await ensureRunning(launcher), path, { signal: AbortSignal.timeout(30_000), ...init });
+      return ask(name, await ensureRunning(launcher), path, { signal: AbortSignal.timeout(30_000), ...init });
     },
     async run(argv = process.argv.slice(2)) {
       const [sub = "open", ...rest] = argv;

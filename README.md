@@ -158,9 +158,10 @@ Upgrades pass the same checks as requests, and an open connection keeps the app 
 
 ## Staying alive, and stopping
 
-A server started by `open` stops after `idle` without being used. Requests count, open
-WebSocket connections count, and `busy()` can hold it. An open window counts if it asks now and
-then — the easiest way is the script localapp serves:
+A server started by `open` stops after `idle` without being used. Requests that get in count
+(not ones it turns away, and not `status` checking on it), open WebSocket connections count, and
+`busy()` can hold it. An open window counts if it asks now and then — the easiest way is the
+script localapp serves:
 
 ```html
 <script src="/__localapp/keepalive.js"></script>
@@ -172,8 +173,10 @@ as idle.
 
 When the server stops — idle, `stop`, Ctrl+C, SIGTERM — localapp closes it (also the browser's
 open keep-alive connections, which would otherwise keep it waiting), calls `close`, removes the
-record, and — when it was started in the background — stops its whole process group, so tools it
-started (git, workers) stop with it.
+record, and — when it was started in the background — stops what it started (git, workers): its
+process group on Linux and macOS, its process tree on Windows. `stop` asks the server itself to
+stop (with its key), so `close` runs on every platform; only a server that doesn't answer gets a
+signal.
 
 A daemon that should keep running sets `idle: false`. (`serve` in the foreground never stops by
 itself.)
@@ -251,7 +254,7 @@ Each app keeps its server record (`server.json`, mode 0600), the background serv
 - Windows: `%LOCALAPPDATA%\<name>`
 
 — or in `dir`. Menu entries: see [Platforms](#platforms); on Windows the hidden launcher script
-and the icon live in `%LOCALAPPDATA%\<name>` too.
+and the icon live in `%LOCALAPPDATA%\<name>\menu`.
 
 ## Development
 

@@ -22,6 +22,12 @@ describe("the app's window", () => {
     ]);
   });
 
+  it("finds a browser installed for one Windows user, from WSL", () => {
+    const chrome = "/mnt/c/Users/me/AppData/Local/Google/Chrome/Application/chrome.exe";
+    const wsl = host({ wsl: true, list: (dir) => (dir === "/mnt/c/Users" ? ["Public", "me"] : []) }, [chrome]);
+    expect(windowCommands(URL, wsl)[0]).toEqual({ command: chrome, args: [`--app=${URL}`] });
+  });
+
   it("is Chrome or Edge on Windows, wherever they're installed", () => {
     const chrome = "C:\\Users\\me\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe";
     const env = {
@@ -54,6 +60,9 @@ describe("where an app keeps its things", () => {
   it("follows each platform's convention", () => {
     expect(stateDir("hello", host())).toBe("/home/me/.local/state/hello");
     expect(stateDir("hello", host({ env: { XDG_STATE_HOME: "/state" } }))).toBe("/state/hello");
+    // Empty or relative: ignored, as the XDG spec says (else it would depend on the working folder).
+    expect(stateDir("hello", host({ env: { XDG_STATE_HOME: "" } }))).toBe("/home/me/.local/state/hello");
+    expect(stateDir("hello", host({ env: { XDG_STATE_HOME: "state" } }))).toBe("/home/me/.local/state/hello");
     expect(stateDir("hello", host({ platform: "darwin" }))).toBe("/home/me/Library/Application Support/hello");
     expect(stateDir("hello", host({ platform: "win32", env: { LOCALAPPDATA: "C:/Users/me/AppData/Local" } }))).toMatch(
       /^C:[/\\]Users[/\\]me[/\\]AppData[/\\]Local[/\\]hello$/

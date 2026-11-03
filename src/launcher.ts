@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Host } from "./host.ts";
 import { readRecord, type ServerRecord } from "./record.ts";
-import { cookieName, isAlive, ROUTES } from "./server.ts";
+import { answers, ask, isAlive, ROUTES } from "./client.ts";
 import { openWindow, type Command } from "./window.ts";
 
 export interface LauncherOptions {
@@ -23,31 +23,13 @@ const STALE_LOCK_MS = START_MS + 5_000;
 /** The background server's log is started afresh past this size. */
 const LOG_LIMIT = 1_000_000;
 
-/** A request to the recorded server, with its key — as the app's window would send it. */
-export function ask(opts: Pick<LauncherOptions, "name">, record: ServerRecord, path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers);
-  if (record.key) headers.set("cookie", `${cookieName(opts.name, record.port)}=${record.key}`);
-  return fetch(`http://127.0.0.1:${record.port}${path}`, {
-    ...init,
-    headers,
-    signal: init.signal ?? AbortSignal.timeout(2000),
-  });
-}
-
 /**
  * The app's server, if one runs: its record, when the server named there answers as this app
- * (not a reused process id, not another program on the port).
+ * (not a process id the system gave someone else since, not another program on the port).
  */
 export async function running(opts: LauncherOptions): Promise<ServerRecord | null> {
   const record = await readRecord(opts.dir);
-  if (!record || !isAlive(record.pid)) return null;
-  try {
-    const res = await ask(opts, record, ROUTES.ping);
-    const body = (await res.json()) as { ok?: unknown; name?: unknown };
-    return res.ok && body.ok === true && body.name === opts.name ? record : null;
-  } catch {
-    return null;
-  }
+  return record && (await answers(opts.name, record)) ? record : null;
 }
 
 /** Starts `serve --background` detached, its output in a log, and waits until a server answers. */
@@ -108,7 +90,7 @@ export async function ensureRunning(opts: LauncherOptions): Promise<ServerRecord
 export async function launchLink(opts: LauncherOptions, record: ServerRecord, path = "/"): Promise<string> {
   const base = `http://127.0.0.1:${record.port}`;
   if (!opts.auth) return `${base}${path}`;
-  const res = await ask(opts, record, ROUTES.launch, { method: "POST" });
+  const res = await ask(opts.name, record, ROUTES.launch, { method: "POST" });
   if (!res.ok) throw new Error(`${opts.name}'s server answered ${res.status} when asked to let a window in.`);
   const { code } = (await res.json()) as { code: string };
   return `${base}${ROUTES.enter}?code=${code}&to=${encodeURIComponent(path)}`;
@@ -134,10 +116,20 @@ export async function openApp(opts: LauncherOptions, path = "/"): Promise<Opened
 export async function stopApp(opts: LauncherOptions): Promise<boolean> {
   const record = await running(opts);
   if (!record) return false;
+  // Asked to stop, it stops as it does when idle — its `close` runs, on every platform. (A
+  // signal on Windows would end it on the spot.) One that doesn't answer gets SIGTERM.
+  const asked = await ask(opts.name, record, ROUTES.stop, { method: "POST" }).then(
+    (res) => res.ok,
+    () => false
+  );
+  const gone = async (ms: number) => {
+    for (const deadline = Date.now() + ms; Date.now() < deadline && isAlive(record.pid);) await delay(100);
+    return !isAlive(record.pid);
+  };
+  if (asked && (await gone(10_000))) return true;
   process.kill(record.pid, "SIGTERM");
-  for (const deadline = Date.now() + 10_000; Date.now() < deadline && isAlive(record.pid);) await delay(100);
-  if (isAlive(record.pid)) throw new Error(`${opts.name} (process ${record.pid}) didn't stop.`);
-  return true;
+  if (await gone(10_000)) return true;
+  throw new Error(`${opts.name} (process ${record.pid}) didn't stop.`);
 }
 
 /** Waits while the server runs (what a WSL shortcut needs: WSL keeps a distribution up while it waits). */

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join, win32 } from "node:path";
 import { promisify } from "node:util";
-import type { Host } from "./host.ts";
+import { xdg, type Host } from "./host.ts";
 import { pngSize, pngToIcns, pngToIco } from "./icons.ts";
 
 const run = promisify(execFile);
@@ -79,7 +79,7 @@ export function desktopEntry(o: {
 }
 
 async function linux(o: InstallOptions): Promise<Installed> {
-  const data = o.host.env.XDG_DATA_HOME ?? join(o.host.home, ".local", "share");
+  const data = xdg(o.host.env.XDG_DATA_HOME) ?? join(o.host.home, ".local", "share");
   const entry = join(data, "applications", `${o.name}.desktop`);
   const icons = join(data, "icons", "hicolor");
   let icon: string | undefined;
@@ -182,7 +182,7 @@ async function fromWindows(path: string): Promise<string> {
 /**
  * Windows (from WSL or Windows itself): a Start menu shortcut that runs a hidden script — no
  * console window, no taskbar entry — with the app's icon. The script and the icon live in
- * `%LOCALAPPDATA%\<name>`; without its own icon a shortcut shows its target's (Windows Script Host's).
+ * `%LOCALAPPDATA%\<name>\menu`; without its own icon a shortcut shows its target's (Windows Script Host's).
  */
 async function windows(o: InstallOptions): Promise<Installed> {
   const [programs, local] = await powershell([
@@ -191,7 +191,8 @@ async function windows(o: InstallOptions): Promise<Installed> {
   ]);
   if (!programs || !local) throw new Error("PowerShell didn't say where the Start menu is.");
   const lnk = win32.join(programs, `${o.title}.lnk`);
-  const folder = win32.join(local, o.name);
+  // A folder of its own, inside the app's: removing it never touches the running server's record.
+  const folder = win32.join(local, o.name, "menu");
   const vbs = win32.join(folder, `${o.name}.vbs`);
   const ico = win32.join(folder, `${o.name}.ico`);
   // Written from here: WSL reaches Windows' disk under /mnt.

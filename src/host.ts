@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 /**
  * What localapp needs to know about the machine it runs on. Passed around instead of read from
@@ -13,6 +13,8 @@ export interface Host {
   wsl: boolean;
   home: string;
   exists: (path: string) => boolean;
+  /** A folder's entries (none if it can't be read). */
+  list: (dir: string) => string[];
 }
 
 /** Whether this is Linux running in WSL (Windows Subsystem for Linux). */
@@ -27,7 +29,14 @@ export function isWsl(platform: NodeJS.Platform = process.platform, env: NodeJS.
 }
 
 export function thisHost(): Host {
-  return { platform: process.platform, env: process.env, wsl: isWsl(), home: homedir(), exists: existsSync };
+  const list = (dir: string) => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  };
+  return { platform: process.platform, env: process.env, wsl: isWsl(), home: homedir(), exists: existsSync, list };
 }
 
 /**
@@ -38,5 +47,8 @@ export function thisHost(): Host {
 export function stateDir(name: string, host: Host): string {
   if (host.platform === "darwin") return join(host.home, "Library", "Application Support", name);
   if (host.platform === "win32") return join(host.env.LOCALAPPDATA ?? join(host.home, "AppData", "Local"), name);
-  return join(host.env.XDG_STATE_HOME ?? join(host.home, ".local", "state"), name);
+  return join(xdg(host.env.XDG_STATE_HOME) ?? join(host.home, ".local", "state"), name);
 }
+
+/** An XDG base directory variable, if it's set to an absolute path (the spec: else it's ignored). */
+export const xdg = (value: string | undefined) => (value && isAbsolute(value) ? value : undefined);

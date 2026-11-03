@@ -1,16 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
-import type { Duplex } from "node:stream";
 import { performance } from "node:perf_hooks";
+import type { Duplex } from "node:stream";
+import { answers, cookieName, ROUTES } from "./client.ts";
 import { readRecord, removeRecord, writeRecord, type ServerRecord } from "./record.ts";
-
-/** localapp's own routes, beside the app's. */
-export const ROUTES = {
-  ping: "/__localapp/ping",
-  launch: "/__localapp/launch",
-  enter: "/__localapp/enter",
-  keepAlive: "/__localapp/keepalive.js",
-} as const;
 
 /** A WebSocket (or other) upgrade, as `ws`'s `handleUpgrade` takes it. */
 export type UpgradeListener = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
@@ -22,22 +16,19 @@ export interface ServeOptions {
   upgrade?: UpgradeListener | undefined;
   /** Ask for the per-launch key (a cookie the launcher hands the window). */
   auth: boolean;
-  /** Stop after this long without a request (ms) — false: keep running. */
+  /** Stop after this long unused (ms) — false: keep running. */
   idle: number | false;
   /** Still at work (a job running): not idle, whatever the requests say. */
   busy?: (() => boolean) | undefined;
   /** Called once the server has stopped taking requests, before the process ends. */
   close?: (() => void | Promise<void>) | undefined;
   port: number;
-  /** Started by the launcher: another port when this one is taken, and the process group stops with it. */
+  /** Started by the launcher: another port when this one is taken, and what it started stops with it. */
   background: boolean;
   /** The port was asked for (`--port`): taken is an error, not a reason to pick another. */
   portGiven: boolean;
   log: (line: string) => void;
 }
-
-/** The cookie the key travels in: by port too, since cookies don't tell ports (or apps) apart. */
-export const cookieName = (name: string, port: number) => `localapp-${name.replace(/[^\w-]/g, "_")}-${port}`;
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -59,8 +50,22 @@ function cookie(req: IncomingMessage, name: string): string | undefined {
   return undefined;
 }
 
-const sameSecret = (a: string | undefined, b: string) =>
-  a !== undefined && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+/** The same secret, compared in constant time — byte lengths first (a non-ASCII cookie isn't a crash). */
+function sameSecret(given: string | undefined, key: string): boolean {
+  if (given === undefined) return false;
+  const [a, b] = [Buffer.from(given), Buffer.from(key)];
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** A path of this app to go to after letting a window in — never a page elsewhere (`//x`, `/\x`). */
+export function localPath(to: string | null): string {
+  try {
+    const target = new URL(to ?? "/", "http://app.invalid");
+    return target.origin === "http://app.invalid" ? `${target.pathname}${target.search}${target.hash}` : "/";
+  } catch {
+    return "/";
+  }
+}
 
 function reply(res: ServerResponse, status: number, body: string, type = "text/plain; charset=utf-8"): void {
   res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
@@ -70,12 +75,20 @@ function reply(res: ServerResponse, status: number, body: string, type = "text/p
 const LAUNCH_CODE_MS = 60_000;
 
 /** What a window loads to keep a server that stops when idle running while it's open. */
-const KEEP_ALIVE_JS = `setInterval(() => fetch(${JSON.stringify(ROUTES.ping)}, { cache: "no-store" }).catch(() => {}), 60000);\n`;
+const KEEP_ALIVE_JS = `setInterval(() => fetch(${JSON.stringify(`${ROUTES.ping}?keepalive`)}, { cache: "no-store" }).catch(() => {}), 60000);\n`;
+
+export interface Gate {
+  request: RequestListener;
+  allowUpgrade: (req: IncomingMessage) => boolean;
+  launchCode: () => string;
+}
 
 /**
  * The gate in front of the app: only requests to this machine by name; with `auth`, only those
  * carrying the key (a cookie the window gets from a one-time launch code); changes only from the
- * app's own pages. localapp's routes (ping, launch codes) are answered here.
+ * app's own pages. localapp's routes (ping, launch codes, stop) are answered here. `onUse`: a
+ * request that got in — what keeps the app from being idle (a status check's ping doesn't count,
+ * a window's keep-alive ping does).
  */
 export function gate(opts: {
   name: string;
@@ -83,11 +96,16 @@ export function gate(opts: {
   port: () => number;
   auth: boolean;
   handler: RequestListener;
-}): { request: RequestListener; allowUpgrade: (req: IncomingMessage) => boolean; launchCode: () => string } {
+  onUse?: () => void;
+  onStop?: () => void;
+}): Gate {
   const codes = new Map<string, number>();
   const launchCode = () => {
+    const now = Date.now();
+    // Codes nobody used (a window that never opened) go once they're expired.
+    for (const [code, expires] of codes) if (expires < now) codes.delete(code);
     const code = randomBytes(18).toString("base64url");
-    codes.set(code, Date.now() + LAUNCH_CODE_MS);
+    codes.set(code, now + LAUNCH_CODE_MS);
     return code;
   };
   const signedIn = (req: IncomingMessage) =>
@@ -106,10 +124,9 @@ export function gate(opts: {
       codes.delete(code);
       if (!expires || expires < Date.now())
         return reply(res, 403, `This link was used already or has expired. Open ${opts.name} again.`);
-      // Only a path of this app: never a redirect elsewhere.
-      const to = url.searchParams.get("to") ?? "/";
+      opts.onUse?.();
       res.writeHead(303, {
-        "location": to.startsWith("/") && !to.startsWith("//") ? to : "/",
+        "location": localPath(url.searchParams.get("to")),
         "set-cookie": `${cookieName(opts.name, opts.port())}=${opts.key}; Path=/; HttpOnly; SameSite=Strict`,
         "cache-control": "no-store",
       });
@@ -122,13 +139,20 @@ export function gate(opts: {
         `<!doctype html><meta charset="utf-8"><title>${opts.name}</title><body style="font:15px system-ui;padding:3em">Open this app through <b>${opts.name}</b> — it opens a window that's let in.</body>`,
         "text/html; charset=utf-8"
       );
-    if (url.pathname === ROUTES.ping)
+    const reads = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+    if (!reads && !sameOrigin(req)) return reply(res, 403, "cross-site request refused");
+    if (url.pathname === ROUTES.ping) {
+      if (url.searchParams.has("keepalive")) opts.onUse?.();
       return reply(res, 200, JSON.stringify({ ok: true, name: opts.name, pid: process.pid }), "application/json");
+    }
+    opts.onUse?.();
     if (url.pathname === ROUTES.keepAlive) return reply(res, 200, KEEP_ALIVE_JS, "text/javascript");
     if (url.pathname === ROUTES.launch && req.method === "POST")
       return reply(res, 200, JSON.stringify({ code: launchCode() }), "application/json");
-    const reads = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
-    if (!reads && !sameOrigin(req)) return reply(res, 403, "cross-site request refused");
+    if (url.pathname === ROUTES.stop && req.method === "POST") {
+      reply(res, 202, JSON.stringify({ stopping: true }), "application/json");
+      return opts.onStop?.();
+    }
     opts.handler(req, res);
   };
   const allowUpgrade = (req: IncomingMessage) => localHost(req.headers.host) && signedIn(req) && sameOrigin(req);
@@ -145,24 +169,33 @@ function listen(server: Server, port: number): Promise<number> {
   });
 }
 
-/** Whether a process lives (one of another user's counts too). */
-export function isAlive(pid: number): boolean {
+/**
+ * Ends what a background server started (tools, workers) with it. Started detached it leads its
+ * own process group on Linux and macOS; on Windows, its process tree.
+ */
+function stopStarted(): void {
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/T", "/F", "/PID", String(process.pid)], { windowsHide: true, stdio: "ignore" });
+    return;
+  }
+  process.removeAllListeners("SIGTERM");
+  process.on("SIGTERM", () => process.exit(0));
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    process.kill(-process.pid, "SIGTERM");
+  } catch {
+    // Not a group leader after all: nothing else to stop.
   }
 }
 
 /**
- * Runs the app's server until it's told to stop (SIGINT, SIGTERM — or idle, if it may stop then).
- * Writes the record a launcher finds it by, unless another server of the app runs: then a
- * background start leaves (that one is used), a foreground one runs beside it.
+ * Runs the app's server until it's told to stop (`stop`, SIGINT, SIGTERM — or idle, if it may stop
+ * then). Writes the record a launcher finds it by, unless another server of the app runs and
+ * answers: then a background start leaves (that one is used), a foreground one runs beside it.
  */
 export async function serve(opts: ServeOptions): Promise<void> {
   const other = await readRecord(opts.dir);
-  const otherRuns = other !== null && isAlive(other.pid);
+  // A record left by a server that crashed (its process id since someone else's) doesn't count.
+  const otherRuns = other !== null && (await answers(opts.name, other));
   if (otherRuns && opts.background) {
     opts.log(`${opts.name} is already running (process ${other.pid}).`);
     return;
@@ -170,22 +203,24 @@ export async function serve(opts: ServeOptions): Promise<void> {
   // A new key every launch: only who holds the record (this user) or a launch code gets in.
   const key = opts.auth ? randomBytes(24).toString("base64url") : "";
   let port = opts.port;
+  let lastActive = performance.now();
+  let stop: (why?: string) => void = () => undefined;
   const { request, allowUpgrade, launchCode } = gate({
     name: opts.name,
     key,
     port: () => port,
     auth: opts.auth,
     handler: opts.handler,
+    onUse: () => (lastActive = performance.now()),
+    onStop: () => stop(),
   });
   const server = createServer(request);
 
-  // What keeps it from being idle: requests, open upgraded connections (WebSockets), busy().
-  let lastActive = performance.now();
+  // What keeps it from being idle: requests that got in, open upgraded connections (WebSockets), busy().
   const open = new Set<Duplex>();
-  server.on("request", () => (lastActive = performance.now()));
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    lastActive = performance.now();
     if (!opts.upgrade || !allowUpgrade(req)) return socket.destroy();
+    lastActive = performance.now();
     open.add(socket);
     socket.once("close", () => {
       open.delete(socket);
@@ -213,7 +248,7 @@ export async function serve(opts: ServeOptions): Promise<void> {
 
   await new Promise<void>((stopped) => {
     let stopping = false;
-    const stop = (why?: string) => {
+    stop = (why) => {
       if (stopping) return;
       stopping = true;
       if (why) opts.log(why);
@@ -236,17 +271,14 @@ export async function serve(opts: ServeOptions): Promise<void> {
       ).unref();
     }
   });
-  await opts.close?.();
-  await removeRecord(opts.dir, process.pid);
-  opts.log(`${opts.name} has stopped.`);
-  if (opts.background && process.platform !== "win32") {
-    // Started detached, it leads its own process group: what it started (tools, workers) stops with it.
-    process.removeAllListeners("SIGTERM");
-    process.on("SIGTERM", () => process.exit(0));
-    try {
-      process.kill(-process.pid, "SIGTERM");
-    } catch {
-      // Not a group leader after all: nothing else to stop.
-    }
+  try {
+    await opts.close?.();
+  } catch (error) {
+    // Still stops all the way: a record left behind, or workers left running, would be worse.
+    opts.log(`${opts.name}: closing failed: ${(error as Error).message}`);
+  } finally {
+    await removeRecord(opts.dir, process.pid);
+    opts.log(`${opts.name} has stopped.`);
+    if (opts.background) stopStarted();
   }
 }
