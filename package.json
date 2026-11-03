@@ -1,0 +1,61 @@
+{
+  "name": "localapp",
+  "version": "0.1.0",
+  "description": "Run a Node web app as a local app: a background server started once, an app window in the browser you have, and an entry in the Start menu \u2014 no Electron.",
+  "keywords": [
+    "local",
+    "app",
+    "launcher",
+    "browser",
+    "app-mode",
+    "chrome",
+    "desktop",
+    "wsl",
+    "start-menu",
+    "shortcut",
+    "background-server"
+  ],
+  "license": "MIT",
+  "author": "Sebastian Antosch",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/santosch/localapp.git"
+  },
+  "homepage": "https://github.com/santosch/localapp#readme",
+  "bugs": "https://github.com/santosch/localapp/issues",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint --type-aware --deny-warnings",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
