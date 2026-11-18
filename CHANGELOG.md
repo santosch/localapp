@@ -2,7 +2,7 @@
 
 ## 0.9.0 — 2026-11-18
 
-First release.
+First release, as [`@santosch/localapp`](https://www.npmjs.com/package/@santosch/localapp).
 
 - `defineApp()`: a Node request handler becomes a local app with a CLI — `open` (the default),
   `serve`, `stop`, `status`, `install [--remove]`, `help`.

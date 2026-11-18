@@ -1,5 +1,8 @@
 # localapp
 
+[![npm](https://img.shields.io/npm/v/@santosch/localapp)](https://www.npmjs.com/package/@santosch/localapp)
+[![CI](https://github.com/santosch/localapp/actions/workflows/ci.yml/badge.svg)](https://github.com/santosch/localapp/actions/workflows/ci.yml)
+
 **Run a Node web app as a local app** — a server that starts in the background the first time
 you open it, an app window in the browser you already have, and an entry in the Start menu.
 No Electron, no bundled Chromium, no runtime dependencies.
