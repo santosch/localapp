@@ -1,5 +1,5 @@
 {
-  "name": "localapp",
+  "name": "@santosch/localapp",
   "version": "0.9.0",
   "description": "Run a Node web app as a local app: a background server started once, an app window in the browser you have, and an entry in the Start menu — no Electron.",
   "keywords": [
@@ -37,6 +37,9 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22"
   },

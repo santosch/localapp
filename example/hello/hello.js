@@ -9,7 +9,7 @@
 // (Run `npm run build` in the repository first: the example uses the built package.)
 
 import { readFileSync } from "node:fs";
-import { defineApp } from "localapp";
+import { defineApp } from "@santosch/localapp";
 
 const svgIcon = readFileSync(new URL("./icon.svg", import.meta.url));
 let clicks = 0;

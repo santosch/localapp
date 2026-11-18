@@ -5,7 +5,7 @@ you open it, an app window in the browser you already have, and an entry in the 
 No Electron, no bundled Chromium, no runtime dependencies.
 
 ```js
-import { defineApp } from "localapp";
+import { defineApp } from "@santosch/localapp";
 
 const app = defineApp({
   name: "hello",
@@ -48,7 +48,7 @@ between, with what's already there:
 ## Install
 
 ```sh
-npm install localapp
+npm install @santosch/localapp
 ```
 
 Node 22 or newer. For app windows: a Chromium browser (Chrome, Edge, Chromium, Brave) — without
@@ -63,7 +63,7 @@ localapp:
 ```js
 #!/usr/bin/env node
 // bin/hello.js
-import { defineApp } from "localapp";
+import { defineApp } from "@santosch/localapp";
 import express from "express";
 
 const web = express();
