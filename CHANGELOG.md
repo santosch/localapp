@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 — 2026-11-18
+
+- The README on npm is the current one: npm and CI badges, the package name in the changelog.
+  No code changes.
+
 ## 0.9.0 — 2026-11-18
 
 First release, as [`@santosch/localapp`](https://www.npmjs.com/package/@santosch/localapp).
