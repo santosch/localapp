@@ -127,7 +127,13 @@ export async function stopApp(opts: LauncherOptions): Promise<boolean> {
     return !isAlive(record.pid);
   };
   if (asked && (await gone(10_000))) return true;
-  process.kill(record.pid, "SIGTERM");
+  try {
+    process.kill(record.pid, "SIGTERM");
+  } catch (error) {
+    // It ended just now, on its own.
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+    throw error;
+  }
   if (await gone(10_000)) return true;
   throw new Error(`${opts.name} (process ${record.pid}) didn't stop.`);
 }

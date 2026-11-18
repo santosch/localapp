@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { connect } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cookieName, ROUTES } from "../src/client.ts";
 import { gate, localPath } from "../src/server.ts";
@@ -30,6 +31,19 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((done) => server.close(() => done())));
 
 describe("the gate in front of the app", () => {
+  it("answers a request line no URL can be made of, and keeps running", async () => {
+    const answer = await new Promise<string>((done, failed) => {
+      const socket = connect(port, "127.0.0.1", () => socket.write("GET http://[ HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+      socket.once("data", (data) => {
+        done(data.toString().split("\r\n")[0]!);
+        socket.destroy();
+      });
+      socket.once("error", failed);
+    });
+    expect(answer).toBe("HTTP/1.1 400 Bad Request");
+    expect((await fetch(`${base()}/`, { headers: signedIn() })).status).toBe(200);
+  });
+
   it("lets a launch code in once, as a cookie, to a path of the app only", async () => {
     const code = launchCode();
     const res = await fetch(`${base()}${ROUTES.enter}?code=${code}&to=${encodeURIComponent("/board?x=1")}`, {

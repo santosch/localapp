@@ -167,7 +167,9 @@ export function wslCommand(distro: string, argv: readonly string[]): string {
 
 /** Runs PowerShell (from WSL or Windows) — its output's lines. */
 async function powershell(lines: string[]): Promise<string[]> {
-  const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", lines.join("; ")], {
+  // In UTF-8: else it writes in the console's code page (850 in Germany), and "Jürgen"'s Start menu is mangled.
+  const script = ["[Console]::OutputEncoding = [Text.Encoding]::UTF8", ...lines].join("; ");
+  const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     windowsHide: true,
   });
   return stdout.trim().split(/\r?\n/);
@@ -211,7 +213,8 @@ async function windows(o: InstallOptions): Promise<Installed> {
     command = [...o.command, "open"].map(winArg).join(" ");
   }
   await mkdir(await here(folder), { recursive: true });
-  await writeFile(await here(vbs), hiddenRunner(command), "latin1");
+  // UTF-16 with a BOM, which Windows Script Host reads as such: any user name's path, not only Latin ones.
+  await writeFile(await here(vbs), `\ufeff${hiddenRunner(command)}`, "utf16le");
   const png = o.icon?.png;
   if (png) await writeFile(await here(ico), pngToIco(await readFile(png)));
   await powershell([

@@ -117,7 +117,13 @@ export function gate(opts: {
 
   const request: RequestListener = (req, res) => {
     if (!localHost(req.headers.host)) return reply(res, 403, "unknown host");
-    const url = new URL(req.url ?? "/", "http://localhost");
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      // A request line no URL can be made of (`GET http://[`) would otherwise end the server.
+      return reply(res, 400, "bad request");
+    }
     if (url.pathname === ROUTES.enter && req.method === "GET") {
       const code = url.searchParams.get("code") ?? "";
       const expires = codes.get(code);
