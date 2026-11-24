@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A server stops when idle only after that long of its own running: idle time is counted in ticks
+  of its timer, not read off a clock. On macOS, Node's monotonic clock runs on while the machine
+  sleeps, so a window left open over night with the lid closed found its server stopped right
+  after waking.
+
 ## 0.9.1 — 2026-11-18
 
 - The README on npm is the current one: npm and CI badges, the package name in the changelog.

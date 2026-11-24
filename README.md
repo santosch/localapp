@@ -172,7 +172,9 @@ script localapp serves:
 
 It pings the server once a minute while the window is open (browsers slow down timers in
 background tabs, but one a minute still gets through). Time the machine was asleep doesn't count
-as idle.
+as idle: the idle time is counted in ticks of the server's own timer, not read off a clock (which
+on macOS runs on while the machine sleeps), so a window left open over night with the lid closed
+still finds its server after waking.
 
 When the server stops — idle, `stop`, Ctrl+C, SIGTERM — localapp closes it (also the browser's
 open keep-alive connections, which would otherwise keep it waiting), calls `close`, removes the

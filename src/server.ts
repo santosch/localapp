@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
-import { performance } from "node:perf_hooks";
 import type { Duplex } from "node:stream";
 import { answers, cookieName, ROUTES } from "./client.ts";
 import { readRecord, removeRecord, writeRecord, type ServerRecord } from "./record.ts";
+import { idleCountdown } from "./idle.ts";
 
 /** A WebSocket (or other) upgrade, as `ws`'s `handleUpgrade` takes it. */
 export type UpgradeListener = (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
@@ -209,7 +209,8 @@ export async function serve(opts: ServeOptions): Promise<void> {
   // A new key every launch: only who holds the record (this user) or a launch code gets in.
   const key = opts.auth ? randomBytes(24).toString("base64url") : "";
   let port = opts.port;
-  let lastActive = performance.now();
+  // How long nothing has used it, counted by its own ticks (see `idleCountdown`).
+  const countdown = idleCountdown(opts.idle === false ? 0 : opts.idle);
   let stop: (why?: string) => void = () => undefined;
   const { request, allowUpgrade, launchCode } = gate({
     name: opts.name,
@@ -217,7 +218,7 @@ export async function serve(opts: ServeOptions): Promise<void> {
     port: () => port,
     auth: opts.auth,
     handler: opts.handler,
-    onUse: () => (lastActive = performance.now()),
+    onUse: () => countdown.use(),
     onStop: () => stop(),
   });
   const server = createServer(request);
@@ -226,11 +227,11 @@ export async function serve(opts: ServeOptions): Promise<void> {
   const open = new Set<Duplex>();
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (!opts.upgrade || !allowUpgrade(req)) return socket.destroy();
-    lastActive = performance.now();
+    countdown.use();
     open.add(socket);
     socket.once("close", () => {
       open.delete(socket);
-      lastActive = performance.now();
+      countdown.use();
     });
     opts.upgrade(req, socket, head);
   });
@@ -266,15 +267,10 @@ export async function serve(opts: ServeOptions): Promise<void> {
     process.once("SIGINT", () => stop());
     process.once("SIGTERM", () => stop());
     if (opts.idle !== false) {
-      const idle = opts.idle;
-      // A monotonic clock: time the machine was asleep isn't time idle.
-      setInterval(
-        () => {
-          if (performance.now() - lastActive > idle && open.size === 0 && !opts.busy?.())
-            stop(`${opts.name} stops: nothing has used it for a while.`);
-        },
-        Math.min(60_000, Math.max(200, idle / 4))
-      ).unref();
+      setInterval(() => {
+        if (countdown.tick(open.size > 0 || Boolean(opts.busy?.())))
+          stop(`${opts.name} stops: nothing has used it for a while.`);
+      }, countdown.tickMs).unref();
     }
   });
   try {
