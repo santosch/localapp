@@ -1,6 +1,6 @@
 {
   "name": "@santosch/localapp",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Run a Node web app as a local app: a background server started once, an app window in the browser you have, and an entry in the Start menu — no Electron.",
   "keywords": [
     "local",

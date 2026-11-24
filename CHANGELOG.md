@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.2 — 2026-11-24
 
 - A server stops when idle only after that long of its own running: idle time is counted in ticks
   of its timer, not read off a clock. On macOS, Node's monotonic clock runs on while the machine
